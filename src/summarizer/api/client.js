@@ -6,6 +6,7 @@
 import { YandexSessionManager } from '../core/session.js';
 import { getSecYaHeaders } from '../core/crypto.js';
 import { SummaryCache } from './cache.js';
+import { getVideoTranscript } from './transcript.js';
 
 /**
  * Extracts standard 11-character YouTube video ID from various URL formats or raw ID.
@@ -142,7 +143,7 @@ export class YandexVideoSummarizer {
    *   fromCache?: boolean
    * }>}
    */
-  async summarizeVideo(urlOrId, { signal, onProgress } = {}) {
+  async summarizeVideo(urlOrId, { signal, onProgress, onChaptersReady, context } = {}) {
     if (signal?.aborted) {
       const err = new Error("Summarization request aborted");
       err.name = "AbortError";
@@ -225,32 +226,53 @@ export class YandexVideoSummarizer {
           } catch (_) {}
         }
 
-        // Stage 2: Generate overall executive summary from chapters/theses
-        const combinedTheses = (result.keypoints || []).map(kp => {
-          const thesesText = (kp.theses || []).join('. ');
-          return kp.title ? `${kp.title}: ${thesesText}` : thesesText;
-        }).filter(Boolean).join('\n');
+        // Stage 2: Generate rich overall executive summary (transcript first, chapters fallback)
+        let overallThesesGenerated = false;
 
-        if (combinedTheses.length > 20) {
-          try {
-            const overall = await this.summarizeText(combinedTheses, { signal });
+        // Try extracting YouTube transcript first
+        try {
+          const transcriptData = await getVideoTranscript(videoId, {
+            context,
+            fetchFn: this.fetchFn,
+            signal,
+            maxChars: 25000
+          });
+
+          if (transcriptData?.text && transcriptData.text.length > 30) {
+            result.transcriptLanguage = transcriptData.language;
+            result.isTranscriptAsr = transcriptData.isAsr;
+            const overall = await this.summarizeText(transcriptData.text, { signal });
             if (Array.isArray(overall) && overall.length > 0) {
               result.overallTheses = overall;
+              overallThesesGenerated = true;
             }
-          } catch (_) {
-            // Graceful fallback: extract first thesis from each chapter
-            result.overallTheses = (result.keypoints || [])
-              .map(kp => kp.theses[0] || kp.title)
-              .filter(Boolean)
-              .slice(0, 5);
+          }
+        } catch (_) {}
+
+        // Fallback: summarize combined chapter theses if transcript is unavailable or failed
+        if (!overallThesesGenerated) {
+          const combinedTheses = (result.keypoints || []).map(kp => {
+            const thesesText = (kp.theses || []).join('. ');
+            return kp.title ? `${kp.title}: ${thesesText}` : thesesText;
+          }).filter(Boolean).join('\n');
+
+          if (combinedTheses.length > 20) {
+            try {
+              const overall = await this.summarizeText(combinedTheses, { signal });
+              if (Array.isArray(overall) && overall.length > 0) {
+                result.overallTheses = overall;
+                overallThesesGenerated = true;
+              }
+            } catch (_) {}
           }
         }
 
-        if (!result.overallTheses || result.overallTheses.length === 0) {
+        // Final fallback: extract top thesis from each chapter (up to 8)
+        if (!Array.isArray(result.overallTheses) || result.overallTheses.length === 0) {
           result.overallTheses = (result.keypoints || [])
             .map(kp => kp.theses[0] || kp.title)
             .filter(Boolean)
-            .slice(0, 5);
+            .slice(0, 8);
         }
 
         this.cache.set(videoId, result);
@@ -360,17 +382,14 @@ export class YandexVideoSummarizer {
         throw err;
       }
 
-      // Check for completed thesis array (Yandex text mode completes with status 0 or 2 with non-empty thesis)
-      if (Array.isArray(data.thesis) && data.thesis.length > 0) {
-        return data.thesis
-          .map(t => (typeof t === 'string' ? t : t?.content || ""))
-          .filter(Boolean);
-      }
-
-      // Status 0 without thesis array or empty
-      if (data.status_code === 0) {
-        if (Array.isArray(data.thesis)) {
-          return data.thesis.map(t => (typeof t === 'string' ? t : t?.content || "")).filter(Boolean);
+      // Completed state:
+      // In Yandex text mode, generation finishes either with status_code === 0 or status_code === 2 (when thesis array is populated).
+      const hasTheses = Array.isArray(data.thesis) && data.thesis.length > 0;
+      if (data.status_code === 0 || (data.status_code === 2 && hasTheses)) {
+        if (hasTheses) {
+          return data.thesis
+            .map(t => (typeof t === 'string' ? t : t?.content || ""))
+            .filter(Boolean);
         }
         return [];
       }

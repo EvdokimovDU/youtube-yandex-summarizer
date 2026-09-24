@@ -247,6 +247,11 @@ export class YouTubeController {
       let chaptersRendered = false;
 
       const summaryResult = await this.summarizer.summarizeVideo(currentUrl, {
+        context: {
+          window: this.win,
+          unsafeWindow: typeof unsafeWindow !== 'undefined' ? unsafeWindow : this.win,
+          document: this.doc
+        },
         onProgress: (progress) => {
           if (!chaptersRendered) {
             this.panel.setLoading(progress);

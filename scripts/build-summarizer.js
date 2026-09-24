@@ -15,7 +15,7 @@ const USERSCRIPT_METADATA = `// ==UserScript==
 // @name         YouTube Video Summarizer (YandexGPT)
 // @name:ru      Краткий пересказ видео YouTube (YandexGPT)
 // @namespace    https://github.com/Antigravity/youtube-yandex-summarizer
-// @version      1.0.1
+// @version      1.0.2
 // @description  AI-powered YouTube video summarization with keypoints and clickable timestamps using Yandex neural networks
 // @description:ru Нейросетевой пересказ видео на YouTube с тезисами и кликабельными таймкодами (YandexGPT / 300.ya.ru)
 // @author       Antigravity
@@ -29,6 +29,7 @@ const USERSCRIPT_METADATA = `// ==UserScript==
 // @grant        unsafeWindow
 // @connect      300.ya.ru
 // @connect      api.browser.yandex.ru
+// @connect      www.youtube.com
 // ==/UserScript==
 `;
 
@@ -36,6 +37,7 @@ const MODULE_FILES = [
   { name: 'core/crypto.js', label: 'Protocol & Cryptography Core' },
   { name: 'core/session.js', label: 'Protobuf & Session Manager' },
   { name: 'api/cache.js', label: 'Video Summary Cache' },
+  { name: 'api/transcript.js', label: 'YouTube Transcript & Subtitles Extractor' },
   { name: 'api/client.js', label: 'Yandex Video Summarizer Client' },
   { name: 'ui/styles.js', label: 'UI Styles & Themes' },
   { name: 'ui/dom-utils.js', label: 'DOM and Trusted Types Safety Utilities' },

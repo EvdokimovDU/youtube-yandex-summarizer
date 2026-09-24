@@ -211,7 +211,7 @@ async function runTests() {
     '@name         YouTube Video Summarizer (YandexGPT)',
     '@name:ru      Краткий пересказ видео YouTube (YandexGPT)',
     '@namespace    https://github.com/Antigravity/youtube-yandex-summarizer',
-    '@version      1.0.1',
+    '@version      1.0.2',
     '@match        *://*.youtube.com/*',
     '@run-at       document-idle',
     '@grant        GM_xmlhttpRequest',
@@ -219,7 +219,8 @@ async function runTests() {
     '@grant        GM_setValue',
     '@grant        GM_registerMenuCommand',
     '@connect      300.ya.ru',
-    '@connect      api.browser.yandex.ru'
+    '@connect      api.browser.yandex.ru',
+    '@connect      www.youtube.com'
   ];
 
   for (const header of expectedHeaders) {

@@ -382,6 +382,90 @@ async function runTests() {
   console.log('✓ Test 8 passed: summarizeText produces clean high-level summary!');
   passedTests++;
 
+  // ==========================================
+  // Test 9: summarizeVideo integrates transcript extraction
+  // ==========================================
+  console.log('\nTest 9: summarizeVideo extracts transcript from context when available');
+  const mockTranscriptContext = {
+    window: {
+      ytInitialPlayerResponse: {
+        captions: {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: [
+              {
+                languageCode: 'ru',
+                baseUrl: 'https://www.youtube.com/api/timedtext?v=test_vid_123&lang=ru'
+              }
+            ]
+          }
+        }
+      }
+    }
+  };
+
+  const mockCustomFetch = async (url, opts) => {
+    if (typeof url === 'string' && url.includes('timedtext')) {
+      return {
+        ok: true,
+        json: async () => ({
+          events: [
+            {
+              tStartMs: 0,
+              dDurationMs: 5000,
+              segs: [{ utf8: 'Это подробный транскрипт видео о банковских картах и микрочипах стандарта EMV.' }]
+            }
+          ]
+        })
+      };
+    }
+
+    // Default to Yandex API mock
+    const body = opts?.body ? JSON.parse(opts.body) : {};
+    if (body.type === 'video') {
+      return {
+        ok: true,
+        json: async () => ({
+          status_code: 0,
+          title: 'Видео про банковские карты',
+          keypoints: [
+            { id: 1, start_time: 0, content: 'Введение', theses: [{ content: 'Тезис 1' }] }
+          ]
+        })
+      };
+    }
+
+    if (body.type === 'text') {
+      return {
+        ok: true,
+        json: async () => ({
+          status_code: 2,
+          thesis: [
+            { id: 0, content: 'Микрочипы стандарта EMV защищают банковские карты.' },
+            { id: 1, content: 'Бесконтактные платежи используют радиочастотную связь RFID.' }
+          ]
+        })
+      };
+    }
+
+    return { ok: true, json: async () => ({ status_code: 0 }) };
+  };
+
+  const transcriptAwareSummarizer = new YandexVideoSummarizer({
+    sessionManager: mockSessionManager,
+    fetchFn: mockCustomFetch
+  });
+
+  const transcriptSummaryResult = await transcriptAwareSummarizer.summarizeVideo('12345678901', {
+    context: mockTranscriptContext
+  });
+
+  assert.strictEqual(transcriptSummaryResult.transcriptLanguage, 'ru', 'Must detect transcript language as ru');
+  assert.strictEqual(transcriptSummaryResult.overallTheses.length, 2, 'Must generate theses from transcript');
+  assert.ok(transcriptSummaryResult.overallTheses[0].includes('EMV'), 'Thesis content matches transcript topic');
+
+  console.log('✓ Test 9 passed: summarizeVideo extracts subtitles and prioritizes them for executive summary');
+  passedTests++;
+
   console.log(`\n🎉 ALL ${passedTests} TESTS PASSED SUCCESSFULLY! 🎉`);
 }
 

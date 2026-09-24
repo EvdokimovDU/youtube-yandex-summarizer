@@ -1,12 +1,13 @@
 {
   "name": "youtube-yandex-summarizer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "AI-powered YouTube video summarization with keypoints and clickable timestamps using Yandex neural networks",
   "type": "module",
   "scripts": {
     "build": "node scripts/build-summarizer.js",
-    "test": "node tests/test-summarizer-session.js && node tests/test-summarizer-api.js && node tests/test-summarizer-ui.js && node tests/test-summarizer-bundle.js",
+    "test": "node tests/test-summarizer-session.js && node tests/test-summarizer-transcript.js && node tests/test-summarizer-api.js && node tests/test-summarizer-ui.js && node tests/test-summarizer-bundle.js",
     "test:session": "node tests/test-summarizer-session.js",
+    "test:transcript": "node tests/test-summarizer-transcript.js",
     "test:api": "node tests/test-summarizer-api.js",
     "test:ui": "node tests/test-summarizer-ui.js",
     "test:bundle": "node tests/test-summarizer-bundle.js"
