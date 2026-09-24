@@ -235,7 +235,7 @@ export class YandexVideoSummarizer {
             context,
             fetchFn: this.fetchFn,
             signal,
-            maxChars: 25000
+            maxChars: 150000
           });
 
           if (transcriptData?.text && transcriptData.text.length > 30) {

@@ -211,7 +211,7 @@ async function runTests() {
     '@name         YouTube Video Summarizer (YandexGPT)',
     '@name:ru      Краткий пересказ видео YouTube (YandexGPT)',
     '@namespace    https://github.com/Antigravity/youtube-yandex-summarizer',
-    '@version      1.0.2',
+    '@version      1.0.3',
     '@match        *://*.youtube.com/*',
     '@run-at       document-idle',
     '@grant        GM_xmlhttpRequest',

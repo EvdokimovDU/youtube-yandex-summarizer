@@ -104,10 +104,10 @@ export function parseTimedTextEvents(json3) {
  * Truncates text at sentence or word boundary to stay within token / character budgets.
  *
  * @param {string} text
- * @param {number} [maxChars=25000]
+ * @param {number} [maxChars=150000]
  * @returns {string}
  */
-export function truncateTranscriptText(text, maxChars = 25000) {
+export function truncateTranscriptText(text, maxChars = 150000) {
   if (!text || text.length <= maxChars) {
     return text || '';
   }
@@ -178,7 +178,7 @@ export function extractPlayerCaptions(context = {}) {
  * }} [options={}]
  * @returns {Promise<{ fullText: string, segments: Array<object> }|null>}
  */
-export function fetchTranscriptFromUrl(trackUrl, { fetchFn = globalThis.fetch, signal, maxChars = 25000 } = {}) {
+export function fetchTranscriptFromUrl(trackUrl, { fetchFn = globalThis.fetch, signal, maxChars = 150000 } = {}) {
   if (!trackUrl || typeof trackUrl !== 'string') {
     return Promise.resolve(null);
   }
@@ -218,7 +218,7 @@ export function fetchTranscriptFromUrl(trackUrl, { fetchFn = globalThis.fetch, s
  * }} [options={}]
  * @returns {Promise<{ text: string, language: string, isAsr: boolean, segments: Array<object> }|null>}
  */
-export async function getVideoTranscript(videoId, { context = {}, fetchFn = globalThis.fetch, signal, maxChars = 25000 } = {}) {
+export async function getVideoTranscript(videoId, { context = {}, fetchFn = globalThis.fetch, signal, maxChars = 150000 } = {}) {
   try {
     const tracks = extractPlayerCaptions(context);
     if (!tracks || tracks.length === 0) {

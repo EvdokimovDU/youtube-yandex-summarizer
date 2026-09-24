@@ -2,7 +2,7 @@
 // @name         YouTube Video Summarizer (YandexGPT)
 // @name:ru      Краткий пересказ видео YouTube (YandexGPT)
 // @namespace    https://github.com/Antigravity/youtube-yandex-summarizer
-// @version      1.0.2
+// @version      1.0.3
 // @description  AI-powered YouTube video summarization with keypoints and clickable timestamps using Yandex neural networks
 // @description:ru Нейросетевой пересказ видео на YouTube с тезисами и кликабельными таймкодами (YandexGPT / 300.ya.ru)
 // @author       Antigravity
@@ -693,10 +693,10 @@
    * Truncates text at sentence or word boundary to stay within token / character budgets.
    *
    * @param {string} text
-   * @param {number} [maxChars=25000]
+   * @param {number} [maxChars=150000]
    * @returns {string}
    */
-  function truncateTranscriptText(text, maxChars = 25000) {
+  function truncateTranscriptText(text, maxChars = 150000) {
     if (!text || text.length <= maxChars) {
       return text || '';
     }
@@ -767,7 +767,7 @@
    * }} [options={}]
    * @returns {Promise<{ fullText: string, segments: Array<object> }|null>}
    */
-  function fetchTranscriptFromUrl(trackUrl, { fetchFn = globalThis.fetch, signal, maxChars = 25000 } = {}) {
+  function fetchTranscriptFromUrl(trackUrl, { fetchFn = globalThis.fetch, signal, maxChars = 150000 } = {}) {
     if (!trackUrl || typeof trackUrl !== 'string') {
       return Promise.resolve(null);
     }
@@ -807,7 +807,7 @@
    * }} [options={}]
    * @returns {Promise<{ text: string, language: string, isAsr: boolean, segments: Array<object> }|null>}
    */
-  async function getVideoTranscript(videoId, { context = {}, fetchFn = globalThis.fetch, signal, maxChars = 25000 } = {}) {
+  async function getVideoTranscript(videoId, { context = {}, fetchFn = globalThis.fetch, signal, maxChars = 150000 } = {}) {
     try {
       const tracks = extractPlayerCaptions(context);
       if (!tracks || tracks.length === 0) {
@@ -1074,7 +1074,7 @@
               context,
               fetchFn: this.fetchFn,
               signal,
-              maxChars: 25000
+              maxChars: 150000
             });
   
             if (transcriptData?.text && transcriptData.text.length > 30) {

@@ -15,7 +15,7 @@ const USERSCRIPT_METADATA = `// ==UserScript==
 // @name         YouTube Video Summarizer (YandexGPT)
 // @name:ru      Краткий пересказ видео YouTube (YandexGPT)
 // @namespace    https://github.com/Antigravity/youtube-yandex-summarizer
-// @version      1.0.2
+// @version      1.0.3
 // @description  AI-powered YouTube video summarization with keypoints and clickable timestamps using Yandex neural networks
 // @description:ru Нейросетевой пересказ видео на YouTube с тезисами и кликабельными таймкодами (YandexGPT / 300.ya.ru)
 // @author       Antigravity
