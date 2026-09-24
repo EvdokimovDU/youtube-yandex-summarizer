@@ -275,6 +275,130 @@ html:not([dark]) {
   border-bottom: 1px dashed var(--yts-border);
 }
 
+/* ==========================================================================
+   Executive Summary Overview Card (.yt-summary-overview-card)
+   ========================================================================== */
+
+.yt-summary-overview-card {
+  background: linear-gradient(135deg, rgba(252, 63, 29, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(252, 63, 29, 0.25);
+  border-left: 3px solid var(--yts-accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.yt-summary-overview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.yt-summary-overview-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--yts-text-primary);
+  letter-spacing: 0.2px;
+}
+
+.yt-summary-overview-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: var(--yts-accent);
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.yt-summary-overview-toggle {
+  background: none;
+  border: none;
+  color: var(--yts-text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, transform 0.2s ease;
+}
+
+.yt-summary-overview-toggle:hover {
+  color: var(--yts-text-primary);
+}
+
+.yt-summary-overview-toggle svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  transition: transform 0.2s ease;
+}
+
+.yt-summary-overview-card.collapsed .yt-summary-overview-toggle svg {
+  transform: rotate(-90deg);
+}
+
+.yt-summary-overview-card.collapsed .yt-summary-overview-body {
+  display: none;
+}
+
+.yt-summary-overview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.yt-summary-overview-item {
+  position: relative;
+  padding-left: 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--yts-text-primary);
+  font-weight: 450;
+}
+
+.yt-summary-overview-item::before {
+  content: "✦";
+  position: absolute;
+  left: 1px;
+  top: 0px;
+  color: var(--yts-accent);
+  font-size: 11px;
+}
+
+.yt-summary-overview-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--yts-text-secondary);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.yt-summary-overview-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(252, 63, 29, 0.25);
+  border-top-color: var(--yts-accent);
+  border-radius: 50%;
+  animation: yts-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
 /* Chapters & Keypoints */
 .yt-summary-chapter {
   display: flex;

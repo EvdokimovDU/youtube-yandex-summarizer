@@ -2,7 +2,7 @@
 // @name         YouTube Video Summarizer (YandexGPT)
 // @name:ru      Краткий пересказ видео YouTube (YandexGPT)
 // @namespace    https://github.com/Antigravity/youtube-yandex-summarizer
-// @version      1.0.0
+// @version      1.0.1
 // @description  AI-powered YouTube video summarization with keypoints and clickable timestamps using Yandex neural networks
 // @description:ru Нейросетевой пересказ видео на YouTube с тезисами и кликабельными таймкодами (YandexGPT / 300.ya.ru)
 // @author       Antigravity
@@ -743,6 +743,9 @@
       // 1. Check Cache
       const cached = this.cache.get(videoId);
       if (cached) {
+        if (typeof onChaptersReady === 'function') {
+          try { onChaptersReady({ ...cached, fromCache: true }); } catch (_) {}
+        }
         return { ...cached, fromCache: true };
       }
   
@@ -797,8 +800,44 @@
               title: kp.content || kp.title || "",
               theses: (kp.theses || []).map(th => (typeof th === 'string' ? th : th?.content || ""))
             })),
+            overallTheses: [],
             raw: data
           };
+  
+          // Notify caller that chapters are ready immediately (Stage 1 complete)
+          if (typeof onChaptersReady === 'function') {
+            try {
+              onChaptersReady({ ...result });
+            } catch (_) {}
+          }
+  
+          // Stage 2: Generate overall executive summary from chapters/theses
+          const combinedTheses = (result.keypoints || []).map(kp => {
+            const thesesText = (kp.theses || []).join('. ');
+            return kp.title ? `${kp.title}: ${thesesText}` : thesesText;
+          }).filter(Boolean).join('\n');
+  
+          if (combinedTheses.length > 20) {
+            try {
+              const overall = await this.summarizeText(combinedTheses, { signal });
+              if (Array.isArray(overall) && overall.length > 0) {
+                result.overallTheses = overall;
+              }
+            } catch (_) {
+              // Graceful fallback: extract first thesis from each chapter
+              result.overallTheses = (result.keypoints || [])
+                .map(kp => kp.theses[0] || kp.title)
+                .filter(Boolean)
+                .slice(0, 5);
+            }
+          }
+  
+          if (!result.overallTheses || result.overallTheses.length === 0) {
+            result.overallTheses = (result.keypoints || [])
+              .map(kp => kp.theses[0] || kp.title)
+              .filter(Boolean)
+              .slice(0, 5);
+          }
   
           this.cache.set(videoId, result);
           return result;
@@ -851,6 +890,124 @@
       }
   
       throw new Error("Summarization request timed out");
+    }
+  
+    /**
+     * Requests neural text summarization from Yandex 300 API.
+     *
+     * @param {string} text Plain text content to summarize
+     * @param {{
+     *   signal?: AbortSignal,
+     *   onProgress?: (progress: { status: string, statusCode: number, pollInterval?: number, approximateWaitingTime?: number }) => void
+     * }} [options={}]
+     * @returns {Promise<string[]>} Array of high-level summary theses
+     */
+    async summarizeText(text, { signal, onProgress } = {}) {
+      if (signal?.aborted) {
+        const err = new Error("Text summarization request aborted");
+        err.name = "AbortError";
+        throw err;
+      }
+  
+      const cleanText = (typeof text === 'string' ? text.trim() : '');
+      if (!cleanText) {
+        return [];
+      }
+  
+      if (!this.fetchFn) {
+        throw new Error("No fetch implementation available in current environment");
+      }
+  
+      const session = await this.sessionManager.getSession("neuroapi");
+      const secHeaders = await getSecYaHeaders("Ya-Summary", session, "/api/neuro/generation");
+  
+      const initialRes = await this.fetchFn(`${this.baseUrl}/api/neuro/generation`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Neuro-Page": "yes",
+          ...secHeaders
+        },
+        body: JSON.stringify({ text: cleanText, type: "text" }),
+        signal
+      });
+  
+      if (!initialRes.ok) {
+        throw new Error(`Yandex text summarization failed (${initialRes.status} ${initialRes.statusText || ''})`);
+      }
+  
+      let data = await initialRes.json();
+  
+      const MAX_POLL_ITERATIONS = 60;
+      for (let iteration = 0; iteration < MAX_POLL_ITERATIONS; iteration++) {
+        if (signal?.aborted) {
+          const err = new Error("Text summarization request aborted");
+          err.name = "AbortError";
+          throw err;
+        }
+  
+        // Check for completed thesis array (Yandex text mode completes with status 0 or 2 with non-empty thesis)
+        if (Array.isArray(data.thesis) && data.thesis.length > 0) {
+          return data.thesis
+            .map(t => (typeof t === 'string' ? t : t?.content || ""))
+            .filter(Boolean);
+        }
+  
+        // Status 0 without thesis array or empty
+        if (data.status_code === 0) {
+          if (Array.isArray(data.thesis)) {
+            return data.thesis.map(t => (typeof t === 'string' ? t : t?.content || "")).filter(Boolean);
+          }
+          return [];
+        }
+  
+        // Status 1, 3, 4: In Progress
+        if (data.status_code === 1 || data.status_code === 3 || data.status_code === 4) {
+          if (typeof onProgress === 'function') {
+            onProgress({
+              status: "progress",
+              statusCode: data.status_code,
+              pollInterval: data.poll_interval_ms,
+              approximateWaitingTime: data.approximate_waiting_time
+            });
+          }
+  
+          const waitMs = data.poll_interval_ms || 1000;
+          await this._sleep(waitMs, signal);
+  
+          if (signal?.aborted) {
+            const err = new Error("Text summarization request aborted");
+            err.name = "AbortError";
+            throw err;
+          }
+  
+          const pollRes = await this.fetchFn(`${this.baseUrl}/api/neuro/generation`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Neuro-Page": "yes"
+            },
+            body: JSON.stringify({ session_id: data.session_id, type: "text" }),
+            signal
+          });
+  
+          if (!pollRes.ok) {
+            throw new Error(`Text polling request failed (${pollRes.status} ${pollRes.statusText || ''})`);
+          }
+  
+          data = await pollRes.json();
+          continue;
+        }
+  
+        // Status 2 with no thesis: Error
+        if (data.status_code === 2) {
+          throw new Error(`Yandex API returned error (status 2): ${data.message || "Text cannot be summarized"}`);
+        }
+  
+        throw new Error(`Unexpected status code received: ${data.status_code} (${data.message || ''})`);
+      }
+  
+      throw new Error("Text summarization request timed out");
     }
   }
 
@@ -1132,6 +1289,130 @@
     margin-bottom: 4px;
     padding-bottom: 8px;
     border-bottom: 1px dashed var(--yts-border);
+  }
+  
+  /* ==========================================================================
+     Executive Summary Overview Card (.yt-summary-overview-card)
+     ========================================================================== */
+  
+  .yt-summary-overview-card {
+    background: linear-gradient(135deg, rgba(252, 63, 29, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+    border: 1px solid rgba(252, 63, 29, 0.25);
+    border-left: 3px solid var(--yts-accent);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: all 0.2s ease;
+  }
+  
+  .yt-summary-overview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    user-select: none;
+  }
+  
+  .yt-summary-overview-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--yts-text-primary);
+    letter-spacing: 0.2px;
+  }
+  
+  .yt-summary-overview-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: var(--yts-accent);
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .yt-summary-overview-toggle {
+    background: none;
+    border: none;
+    color: var(--yts-text-secondary);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease, transform 0.2s ease;
+  }
+  
+  .yt-summary-overview-toggle:hover {
+    color: var(--yts-text-primary);
+  }
+  
+  .yt-summary-overview-toggle svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+    transition: transform 0.2s ease;
+  }
+  
+  .yt-summary-overview-card.collapsed .yt-summary-overview-toggle svg {
+    transform: rotate(-90deg);
+  }
+  
+  .yt-summary-overview-card.collapsed .yt-summary-overview-body {
+    display: none;
+  }
+  
+  .yt-summary-overview-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  
+  .yt-summary-overview-item {
+    position: relative;
+    padding-left: 16px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--yts-text-primary);
+    font-weight: 450;
+  }
+  
+  .yt-summary-overview-item::before {
+    content: "✦";
+    position: absolute;
+    left: 1px;
+    top: 0px;
+    color: var(--yts-accent);
+    font-size: 11px;
+  }
+  
+  .yt-summary-overview-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--yts-text-secondary);
+    font-style: italic;
+    padding: 4px 0;
+  }
+  
+  .yt-summary-overview-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(252, 63, 29, 0.25);
+    border-top-color: var(--yts-accent);
+    border-radius: 50%;
+    animation: yts-spin 0.8s linear infinite;
+    flex-shrink: 0;
   }
   
   /* Chapters & Keypoints */
@@ -1762,6 +2043,7 @@
     CHECK: `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`,
     CLOSE: `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`,
     PLAY: `<svg viewBox="0 0 24 24" width="10" height="10"><polygon fill="currentColor" points="6 4 20 12 6 20 6 4"/></svg>`,
+    CHEVRON: `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>`,
     ERROR: `<svg viewBox="0 0 24 24" width="40" height="40"><path fill="#e53935" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>`
   };
   class SummaryDrawerPanel {
@@ -1970,7 +2252,7 @@
      * @param {(seconds: number) => void} [onTimecodeClick]
      */
     renderSummary(summaryData, onTimecodeClick) {
-      this.currentSummary = summaryData;
+      this.currentSummary = summaryData ? { ...summaryData } : null;
       const timecodeHandler = onTimecodeClick || this.onTimecodeClick;
   
       // Clear content safely without innerHTML
@@ -1990,6 +2272,58 @@
         titleEl.textContent = summaryData.title;
         this.contentEl.appendChild(titleEl);
       }
+  
+      // Top Overview Card (Executive Summary)
+      const overviewCard = this.doc.createElement('div');
+      overviewCard.className = 'yt-summary-overview-card';
+      overviewCard.id = 'yt-summary-overview-card';
+  
+      const overviewHeader = this.doc.createElement('div');
+      overviewHeader.className = 'yt-summary-overview-header';
+      setSafeHTML(overviewHeader, `
+        <div class="yt-summary-overview-title">
+          ${ICONS.SPARKLES}
+          <span>Главное из видео</span>
+          <span class="yt-summary-overview-badge">ИТОГ</span>
+        </div>
+        <button type="button" class="yt-summary-overview-toggle" title="Свернуть / развернуть итог">
+          ${ICONS.CHEVRON}
+        </button>
+      `, this.doc);
+  
+      const toggleBtn = overviewHeader.querySelector('.yt-summary-overview-toggle');
+      toggleBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        overviewCard.classList.toggle('collapsed');
+      });
+  
+      overviewCard.appendChild(overviewHeader);
+  
+      const overviewBody = this.doc.createElement('div');
+      overviewBody.className = 'yt-summary-overview-body';
+  
+      if (Array.isArray(summaryData.overallTheses) && summaryData.overallTheses.length > 0) {
+        const listEl = this.doc.createElement('ul');
+        listEl.className = 'yt-summary-overview-list';
+        for (const item of summaryData.overallTheses) {
+          const li = this.doc.createElement('li');
+          li.className = 'yt-summary-overview-item';
+          li.textContent = item;
+          listEl.appendChild(li);
+        }
+        overviewBody.appendChild(listEl);
+      } else {
+        setSafeHTML(overviewBody, `
+          <div class="yt-summary-overview-loading">
+            <div class="yt-summary-overview-spinner"></div>
+            <span>Нейросеть YandexGPT выделяет главное...</span>
+          </div>
+        `, this.doc);
+      }
+  
+      overviewCard.appendChild(overviewBody);
+      this.contentEl.appendChild(overviewCard);
   
       // Chapters container
       const chaptersContainer = this.doc.createElement('div');
@@ -2049,6 +2383,35 @@
     }
   
     /**
+     * Dynamically updates the executive summary overview card with finished theses.
+     * @param {string[]} overallTheses
+     */
+    updateOverview(overallTheses) {
+      if (this.currentSummary) {
+        this.currentSummary.overallTheses = overallTheses;
+      }
+      const overviewCard = this.contentEl?.querySelector?.('#yt-summary-overview-card');
+      if (!overviewCard) return;
+  
+      const overviewBody = overviewCard.querySelector?.('.yt-summary-overview-body');
+      if (!overviewBody) return;
+  
+      clearElement(overviewBody);
+  
+      if (Array.isArray(overallTheses) && overallTheses.length > 0) {
+        const listEl = this.doc.createElement('ul');
+        listEl.className = 'yt-summary-overview-list';
+        for (const item of overallTheses) {
+          const li = this.doc.createElement('li');
+          li.className = 'yt-summary-overview-item';
+          li.textContent = item;
+          listEl.appendChild(li);
+        }
+        overviewBody.appendChild(listEl);
+      }
+    }
+  
+    /**
      * Displays error view with retry action button.
      *
      * @param {string} errorMessage
@@ -2088,11 +2451,20 @@
       const lines = [];
   
       if (this.currentSummary.title) {
-        lines.push(this.currentSummary.title);
+        lines.push(`📌 ${this.currentSummary.title}`);
         lines.push('');
       }
   
-      if (Array.isArray(this.currentSummary.keypoints)) {
+      if (Array.isArray(this.currentSummary.overallTheses) && this.currentSummary.overallTheses.length > 0) {
+        lines.push('💡 ГЛАВНОЕ ИЗ ВИДЕО (YandexGPT):');
+        for (const th of this.currentSummary.overallTheses) {
+          lines.push(`• ${th}`);
+        }
+        lines.push('');
+      }
+  
+      if (Array.isArray(this.currentSummary.keypoints) && this.currentSummary.keypoints.length > 0) {
+        lines.push('⏱️ СОДЕРЖАНИЕ ПО ГЛАВАМ:');
         for (const kp of this.currentSummary.keypoints) {
           lines.push(`[${kp.timecode}] ${kp.title || ''}`.trim());
           if (Array.isArray(kp.theses)) {
@@ -2376,15 +2748,30 @@
       this.panel.setLoading({ status: 'starting' });
   
       try {
+        let chaptersRendered = false;
+  
         const summaryResult = await this.summarizer.summarizeVideo(currentUrl, {
           onProgress: (progress) => {
-            this.panel.setLoading(progress);
+            if (!chaptersRendered) {
+              this.panel.setLoading(progress);
+            }
+          },
+          onChaptersReady: (intermediateResult) => {
+            chaptersRendered = true;
+            this.button.setLoading(false);
+            this.button.setActive(true);
+            this.panel.renderSummary(intermediateResult, (time) => this.seekTo(time));
           }
         });
   
         this.button.setLoading(false);
         this.button.setActive(true);
-        this.panel.renderSummary(summaryResult, (time) => this.seekTo(time));
+  
+        if (!chaptersRendered) {
+          this.panel.renderSummary(summaryResult, (time) => this.seekTo(time));
+        } else if (Array.isArray(summaryResult.overallTheses) && summaryResult.overallTheses.length > 0) {
+          this.panel.updateOverview(summaryResult.overallTheses);
+        }
       } catch (err) {
         this.button.setLoading(false);
         this.panel.renderError(

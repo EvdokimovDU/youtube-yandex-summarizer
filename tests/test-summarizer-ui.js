@@ -486,6 +486,7 @@ async function runTests() {
   // 5b. Summary state
   const mockSummaryData = {
     title: 'Тестовое видео про ИИ',
+    overallTheses: ['Нейросети трансформируют индустрию', 'Внимание — ключевой компонент'],
     keypoints: [
       {
         startTime: 10,
@@ -506,6 +507,27 @@ async function runTests() {
   panel.renderSummary(mockSummaryData, (time) => {
     clickedTime = time;
   });
+
+  // Verify Overview card
+  const overviewCard = content.querySelector('.yt-summary-overview-card');
+  assert.ok(overviewCard, 'Must render executive summary overview card');
+  const overviewItems = overviewCard.querySelectorAll('.yt-summary-overview-item');
+  assert.strictEqual(overviewItems.length, 2, 'Must render 2 overview bullet items');
+  assert.ok(overviewItems[0].textContent.includes('трансформируют'), 'First overview item text matches');
+
+  // Verify collapse toggle
+  const toggleBtn = overviewCard.querySelector('.yt-summary-overview-toggle');
+  assert.ok(toggleBtn, 'Must render collapse toggle button');
+  toggleBtn.click();
+  assert.ok(overviewCard.classList.contains('collapsed'), 'Clicking toggle collapses overview card');
+  toggleBtn.click();
+  assert.strictEqual(overviewCard.classList.contains('collapsed'), false, 'Clicking toggle again expands card');
+
+  // Verify updateOverview
+  panel.updateOverview(['Обновленный тезис 1', 'Обновленный тезис 2', 'Обновленный тезис 3']);
+  const updatedItems = overviewCard.querySelectorAll('.yt-summary-overview-item');
+  assert.strictEqual(updatedItems.length, 3, 'updateOverview must update list of items to 3');
+  assert.ok(updatedItems[0].textContent.includes('Обновленный тезис 1'), 'Updated thesis content matches');
 
   const chapters = content.querySelectorAll('.yt-summary-chapter');
   assert.strictEqual(chapters.length, 2, 'Must render 2 chapter elements');
@@ -533,7 +555,7 @@ async function runTests() {
   retryBtn.click();
   assert.strictEqual(retryTriggered, true, 'Clicking retry button triggers onRetry callback');
 
-  console.log('✓ Test 5 passed: SummaryDrawerPanel renders loading, summary, timecodes, and errors correctly');
+  console.log('✓ Test 5 passed: SummaryDrawerPanel renders loading, summary, overview card, timecodes, and errors correctly');
   passedTests++;
 
   // -------------------------------------------------------------
@@ -549,6 +571,8 @@ async function runTests() {
 
   assert.ok(clipboardContent.length > 0, 'Clipboard must receive copied text');
   assert.ok(clipboardContent.includes('Тестовое видео про ИИ'), 'Copied text must include title');
+  assert.ok(clipboardContent.includes('ГЛАВНОЕ ИЗ ВИДЕО'), 'Copied text must include executive summary heading');
+  assert.ok(clipboardContent.includes('Нейросети трансформируют'), 'Copied text must include overall thesis');
   assert.ok(clipboardContent.includes('[00:10] Вступление'), 'Copied text must include timecodes and chapter title');
   assert.ok(clipboardContent.includes('• Что такое нейросети'), 'Copied text must include thesis bullet');
   assert.ok(clipboardContent.includes('[02:05] Архитектура трансформеров'), 'Copied text must include second chapter');

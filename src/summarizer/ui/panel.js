@@ -12,6 +12,7 @@ const ICONS = {
   CHECK: `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`,
   CLOSE: `<svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`,
   PLAY: `<svg viewBox="0 0 24 24" width="10" height="10"><polygon fill="currentColor" points="6 4 20 12 6 20 6 4"/></svg>`,
+  CHEVRON: `<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/></svg>`,
   ERROR: `<svg viewBox="0 0 24 24" width="40" height="40"><path fill="#e53935" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>`
 };
 
@@ -221,7 +222,7 @@ export class SummaryDrawerPanel {
    * @param {(seconds: number) => void} [onTimecodeClick]
    */
   renderSummary(summaryData, onTimecodeClick) {
-    this.currentSummary = summaryData;
+    this.currentSummary = summaryData ? { ...summaryData } : null;
     const timecodeHandler = onTimecodeClick || this.onTimecodeClick;
 
     // Clear content safely without innerHTML
@@ -241,6 +242,58 @@ export class SummaryDrawerPanel {
       titleEl.textContent = summaryData.title;
       this.contentEl.appendChild(titleEl);
     }
+
+    // Top Overview Card (Executive Summary)
+    const overviewCard = this.doc.createElement('div');
+    overviewCard.className = 'yt-summary-overview-card';
+    overviewCard.id = 'yt-summary-overview-card';
+
+    const overviewHeader = this.doc.createElement('div');
+    overviewHeader.className = 'yt-summary-overview-header';
+    setSafeHTML(overviewHeader, `
+      <div class="yt-summary-overview-title">
+        ${ICONS.SPARKLES}
+        <span>Главное из видео</span>
+        <span class="yt-summary-overview-badge">ИТОГ</span>
+      </div>
+      <button type="button" class="yt-summary-overview-toggle" title="Свернуть / развернуть итог">
+        ${ICONS.CHEVRON}
+      </button>
+    `, this.doc);
+
+    const toggleBtn = overviewHeader.querySelector('.yt-summary-overview-toggle');
+    toggleBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      overviewCard.classList.toggle('collapsed');
+    });
+
+    overviewCard.appendChild(overviewHeader);
+
+    const overviewBody = this.doc.createElement('div');
+    overviewBody.className = 'yt-summary-overview-body';
+
+    if (Array.isArray(summaryData.overallTheses) && summaryData.overallTheses.length > 0) {
+      const listEl = this.doc.createElement('ul');
+      listEl.className = 'yt-summary-overview-list';
+      for (const item of summaryData.overallTheses) {
+        const li = this.doc.createElement('li');
+        li.className = 'yt-summary-overview-item';
+        li.textContent = item;
+        listEl.appendChild(li);
+      }
+      overviewBody.appendChild(listEl);
+    } else {
+      setSafeHTML(overviewBody, `
+        <div class="yt-summary-overview-loading">
+          <div class="yt-summary-overview-spinner"></div>
+          <span>Нейросеть YandexGPT выделяет главное...</span>
+        </div>
+      `, this.doc);
+    }
+
+    overviewCard.appendChild(overviewBody);
+    this.contentEl.appendChild(overviewCard);
 
     // Chapters container
     const chaptersContainer = this.doc.createElement('div');
@@ -300,6 +353,35 @@ export class SummaryDrawerPanel {
   }
 
   /**
+   * Dynamically updates the executive summary overview card with finished theses.
+   * @param {string[]} overallTheses
+   */
+  updateOverview(overallTheses) {
+    if (this.currentSummary) {
+      this.currentSummary.overallTheses = overallTheses;
+    }
+    const overviewCard = this.contentEl?.querySelector?.('#yt-summary-overview-card');
+    if (!overviewCard) return;
+
+    const overviewBody = overviewCard.querySelector?.('.yt-summary-overview-body');
+    if (!overviewBody) return;
+
+    clearElement(overviewBody);
+
+    if (Array.isArray(overallTheses) && overallTheses.length > 0) {
+      const listEl = this.doc.createElement('ul');
+      listEl.className = 'yt-summary-overview-list';
+      for (const item of overallTheses) {
+        const li = this.doc.createElement('li');
+        li.className = 'yt-summary-overview-item';
+        li.textContent = item;
+        listEl.appendChild(li);
+      }
+      overviewBody.appendChild(listEl);
+    }
+  }
+
+  /**
    * Displays error view with retry action button.
    *
    * @param {string} errorMessage
@@ -339,11 +421,20 @@ export class SummaryDrawerPanel {
     const lines = [];
 
     if (this.currentSummary.title) {
-      lines.push(this.currentSummary.title);
+      lines.push(`📌 ${this.currentSummary.title}`);
       lines.push('');
     }
 
-    if (Array.isArray(this.currentSummary.keypoints)) {
+    if (Array.isArray(this.currentSummary.overallTheses) && this.currentSummary.overallTheses.length > 0) {
+      lines.push('💡 ГЛАВНОЕ ИЗ ВИДЕО (YandexGPT):');
+      for (const th of this.currentSummary.overallTheses) {
+        lines.push(`• ${th}`);
+      }
+      lines.push('');
+    }
+
+    if (Array.isArray(this.currentSummary.keypoints) && this.currentSummary.keypoints.length > 0) {
+      lines.push('⏱️ СОДЕРЖАНИЕ ПО ГЛАВАМ:');
       for (const kp of this.currentSummary.keypoints) {
         lines.push(`[${kp.timecode}] ${kp.title || ''}`.trim());
         if (Array.isArray(kp.theses)) {

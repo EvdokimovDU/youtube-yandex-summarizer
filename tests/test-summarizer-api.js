@@ -239,10 +239,12 @@ async function runTests() {
   assert.strictEqual(progressEvents.length, 1);
   assert.strictEqual(progressEvents[0].statusCode, 1);
 
+  assert.ok(Array.isArray(summaryResult.overallTheses));
+
   // 6c: Cache hit verification
   const cachedResult = await pollingSummarizer.summarizeVideo('dQw4w9WgXcQ');
   assert.strictEqual(cachedResult.fromCache, true);
-  assert.strictEqual(pollCount, 2, 'No new network requests should be made for cached item');
+  assert.strictEqual(pollCount, 3, 'No new network requests should be made for cached item');
 
   // 6d: Error status_code 2 throws
   const mockFetchError = async () => ({
@@ -349,12 +351,35 @@ async function runTests() {
     console.log(`    - ${liveResult.keypoints[0].theses[0]}`);
   }
 
+  assert.ok(Array.isArray(liveResult.overallTheses), 'Result must contain overallTheses array');
+  assert.ok(liveResult.overallTheses.length > 0, 'Must have at least 1 overall thesis');
+  console.log(`  Overall theses count: ${liveResult.overallTheses.length}`);
+  console.log(`  Sample overall thesis: ${liveResult.overallTheses[0]}`);
+
   // Verify caching on live instance
   const secondLiveResult = await liveSummarizer.summarizeVideo(testUrl);
   assert.strictEqual(secondLiveResult.fromCache, true, 'Second call must return fromCache: true');
   assert.strictEqual(secondLiveResult.videoId, liveResult.videoId);
+  assert.strictEqual(secondLiveResult.overallTheses.length, liveResult.overallTheses.length);
 
   console.log('✓ Test 7 passed: Live Yandex summarization and caching succeeded!');
+  passedTests++;
+
+  // ==========================================
+  // Test 8: summarizeText with direct text input
+  // ==========================================
+  console.log('\nTest 8: summarizeText generates bulleted summary for plain text');
+  const sampleText = 'Химическая закалка стекла делает его более прочным благодаря ионному обмену. ' +
+    'Натрий из стекла замещается калием из расплава селитры при температуре около четырехсот градусов. ' +
+    'В результате поверхность стекла оказывается сжатой, что препятствует распространению микротрещин.';
+  
+  const textTheses = await liveSummarizer.summarizeText(sampleText);
+  assert.ok(Array.isArray(textTheses), 'summarizeText must return an array');
+  assert.ok(textTheses.length > 0, 'summarizeText must return at least 1 thesis');
+  console.log(`  Extracted ${textTheses.length} high-level theses:`);
+  textTheses.forEach((th, i) => console.log(`    ${i + 1}. ${th}`));
+
+  console.log('✓ Test 8 passed: summarizeText produces clean high-level summary!');
   passedTests++;
 
   console.log(`\n🎉 ALL ${passedTests} TESTS PASSED SUCCESSFULLY! 🎉`);

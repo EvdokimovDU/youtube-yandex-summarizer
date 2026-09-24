@@ -1,6 +1,6 @@
 {
   "name": "youtube-yandex-summarizer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI-powered YouTube video summarization with keypoints and clickable timestamps using Yandex neural networks",
   "type": "module",
   "scripts": {

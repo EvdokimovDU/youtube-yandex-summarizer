@@ -244,15 +244,30 @@ export class YouTubeController {
     this.panel.setLoading({ status: 'starting' });
 
     try {
+      let chaptersRendered = false;
+
       const summaryResult = await this.summarizer.summarizeVideo(currentUrl, {
         onProgress: (progress) => {
-          this.panel.setLoading(progress);
+          if (!chaptersRendered) {
+            this.panel.setLoading(progress);
+          }
+        },
+        onChaptersReady: (intermediateResult) => {
+          chaptersRendered = true;
+          this.button.setLoading(false);
+          this.button.setActive(true);
+          this.panel.renderSummary(intermediateResult, (time) => this.seekTo(time));
         }
       });
 
       this.button.setLoading(false);
       this.button.setActive(true);
-      this.panel.renderSummary(summaryResult, (time) => this.seekTo(time));
+
+      if (!chaptersRendered) {
+        this.panel.renderSummary(summaryResult, (time) => this.seekTo(time));
+      } else if (Array.isArray(summaryResult.overallTheses) && summaryResult.overallTheses.length > 0) {
+        this.panel.updateOverview(summaryResult.overallTheses);
+      }
     } catch (err) {
       this.button.setLoading(false);
       this.panel.renderError(

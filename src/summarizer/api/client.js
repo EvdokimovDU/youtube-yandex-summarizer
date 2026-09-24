@@ -157,6 +157,9 @@ export class YandexVideoSummarizer {
     // 1. Check Cache
     const cached = this.cache.get(videoId);
     if (cached) {
+      if (typeof onChaptersReady === 'function') {
+        try { onChaptersReady({ ...cached, fromCache: true }); } catch (_) {}
+      }
       return { ...cached, fromCache: true };
     }
 
@@ -211,8 +214,44 @@ export class YandexVideoSummarizer {
             title: kp.content || kp.title || "",
             theses: (kp.theses || []).map(th => (typeof th === 'string' ? th : th?.content || ""))
           })),
+          overallTheses: [],
           raw: data
         };
+
+        // Notify caller that chapters are ready immediately (Stage 1 complete)
+        if (typeof onChaptersReady === 'function') {
+          try {
+            onChaptersReady({ ...result });
+          } catch (_) {}
+        }
+
+        // Stage 2: Generate overall executive summary from chapters/theses
+        const combinedTheses = (result.keypoints || []).map(kp => {
+          const thesesText = (kp.theses || []).join('. ');
+          return kp.title ? `${kp.title}: ${thesesText}` : thesesText;
+        }).filter(Boolean).join('\n');
+
+        if (combinedTheses.length > 20) {
+          try {
+            const overall = await this.summarizeText(combinedTheses, { signal });
+            if (Array.isArray(overall) && overall.length > 0) {
+              result.overallTheses = overall;
+            }
+          } catch (_) {
+            // Graceful fallback: extract first thesis from each chapter
+            result.overallTheses = (result.keypoints || [])
+              .map(kp => kp.theses[0] || kp.title)
+              .filter(Boolean)
+              .slice(0, 5);
+          }
+        }
+
+        if (!result.overallTheses || result.overallTheses.length === 0) {
+          result.overallTheses = (result.keypoints || [])
+            .map(kp => kp.theses[0] || kp.title)
+            .filter(Boolean)
+            .slice(0, 5);
+        }
 
         this.cache.set(videoId, result);
         return result;
@@ -265,6 +304,124 @@ export class YandexVideoSummarizer {
     }
 
     throw new Error("Summarization request timed out");
+  }
+
+  /**
+   * Requests neural text summarization from Yandex 300 API.
+   *
+   * @param {string} text Plain text content to summarize
+   * @param {{
+   *   signal?: AbortSignal,
+   *   onProgress?: (progress: { status: string, statusCode: number, pollInterval?: number, approximateWaitingTime?: number }) => void
+   * }} [options={}]
+   * @returns {Promise<string[]>} Array of high-level summary theses
+   */
+  async summarizeText(text, { signal, onProgress } = {}) {
+    if (signal?.aborted) {
+      const err = new Error("Text summarization request aborted");
+      err.name = "AbortError";
+      throw err;
+    }
+
+    const cleanText = (typeof text === 'string' ? text.trim() : '');
+    if (!cleanText) {
+      return [];
+    }
+
+    if (!this.fetchFn) {
+      throw new Error("No fetch implementation available in current environment");
+    }
+
+    const session = await this.sessionManager.getSession("neuroapi");
+    const secHeaders = await getSecYaHeaders("Ya-Summary", session, "/api/neuro/generation");
+
+    const initialRes = await this.fetchFn(`${this.baseUrl}/api/neuro/generation`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Neuro-Page": "yes",
+        ...secHeaders
+      },
+      body: JSON.stringify({ text: cleanText, type: "text" }),
+      signal
+    });
+
+    if (!initialRes.ok) {
+      throw new Error(`Yandex text summarization failed (${initialRes.status} ${initialRes.statusText || ''})`);
+    }
+
+    let data = await initialRes.json();
+
+    const MAX_POLL_ITERATIONS = 60;
+    for (let iteration = 0; iteration < MAX_POLL_ITERATIONS; iteration++) {
+      if (signal?.aborted) {
+        const err = new Error("Text summarization request aborted");
+        err.name = "AbortError";
+        throw err;
+      }
+
+      // Check for completed thesis array (Yandex text mode completes with status 0 or 2 with non-empty thesis)
+      if (Array.isArray(data.thesis) && data.thesis.length > 0) {
+        return data.thesis
+          .map(t => (typeof t === 'string' ? t : t?.content || ""))
+          .filter(Boolean);
+      }
+
+      // Status 0 without thesis array or empty
+      if (data.status_code === 0) {
+        if (Array.isArray(data.thesis)) {
+          return data.thesis.map(t => (typeof t === 'string' ? t : t?.content || "")).filter(Boolean);
+        }
+        return [];
+      }
+
+      // Status 1, 3, 4: In Progress
+      if (data.status_code === 1 || data.status_code === 3 || data.status_code === 4) {
+        if (typeof onProgress === 'function') {
+          onProgress({
+            status: "progress",
+            statusCode: data.status_code,
+            pollInterval: data.poll_interval_ms,
+            approximateWaitingTime: data.approximate_waiting_time
+          });
+        }
+
+        const waitMs = data.poll_interval_ms || 1000;
+        await this._sleep(waitMs, signal);
+
+        if (signal?.aborted) {
+          const err = new Error("Text summarization request aborted");
+          err.name = "AbortError";
+          throw err;
+        }
+
+        const pollRes = await this.fetchFn(`${this.baseUrl}/api/neuro/generation`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Neuro-Page": "yes"
+          },
+          body: JSON.stringify({ session_id: data.session_id, type: "text" }),
+          signal
+        });
+
+        if (!pollRes.ok) {
+          throw new Error(`Text polling request failed (${pollRes.status} ${pollRes.statusText || ''})`);
+        }
+
+        data = await pollRes.json();
+        continue;
+      }
+
+      // Status 2 with no thesis: Error
+      if (data.status_code === 2) {
+        throw new Error(`Yandex API returned error (status 2): ${data.message || "Text cannot be summarized"}`);
+      }
+
+      throw new Error(`Unexpected status code received: ${data.status_code} (${data.message || ''})`);
+    }
+
+    throw new Error("Text summarization request timed out");
   }
 }
 
