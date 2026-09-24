@@ -1,0 +1,24 @@
+{
+  "name": "youtube-yandex-summarizer",
+  "version": "1.0.0",
+  "description": "AI-powered YouTube video summarization with keypoints and clickable timestamps using Yandex neural networks",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-summarizer.js",
+    "test": "node tests/test-summarizer-session.js && node tests/test-summarizer-api.js && node tests/test-summarizer-ui.js && node tests/test-summarizer-bundle.js",
+    "test:session": "node tests/test-summarizer-session.js",
+    "test:api": "node tests/test-summarizer-api.js",
+    "test:ui": "node tests/test-summarizer-ui.js",
+    "test:bundle": "node tests/test-summarizer-bundle.js"
+  },
+  "keywords": [
+    "userscript",
+    "tampermonkey",
+    "youtube",
+    "summarizer",
+    "yandexgpt",
+    "neuroapi"
+  ],
+  "author": "Antigravity",
+  "license": "MIT"
+}
