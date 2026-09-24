@@ -99,26 +99,61 @@ export function injectSummaryButton(buttonEl, doc = (typeof document !== 'undefi
     }
   }
 
-  // 1. Try to place directly next to YouTube's Like/Dislike segmented button
-  const likeBtn = doc.querySelector ? doc.querySelector(
+  // 1. Prioritize visible watch metadata action bar
+  const primaryContainers = [
+    'ytd-watch-metadata #top-level-buttons-computed',
+    'ytd-watch-metadata ytd-menu-renderer #top-level-buttons-computed',
+    'ytd-watch-metadata #top-row #actions #top-level-buttons-computed',
+    'ytd-watch-metadata #actions #top-level-buttons-computed',
+    '#menu #top-level-buttons-computed',
+    '#top-level-buttons-computed',
+    'ytd-menu-renderer #top-level-buttons-computed'
+  ];
+
+  for (const selector of primaryContainers) {
+    const container = doc.querySelector ? doc.querySelector(selector) : null;
+    if (container && !container.closest?.('yt-player-quick-action-buttons')) {
+      const likeBtn = container.querySelector(
+        'ytd-segmented-like-dislike-button-renderer, ' +
+        'segmented-like-dislike-button-view-model, ' +
+        'like-button-view-model, ' +
+        '#segmented-like-button'
+      );
+      if (likeBtn) {
+        try {
+          container.insertBefore(buttonEl, likeBtn);
+          return true;
+        } catch (_) {}
+      }
+      if (typeof container.prepend === 'function') {
+        container.prepend(buttonEl);
+      } else {
+        container.appendChild(buttonEl);
+      }
+      return true;
+    }
+  }
+
+  // 2. Direct like button search (excluding quick action buttons)
+  const candidateLikeButtons = doc.querySelectorAll ? Array.from(doc.querySelectorAll(
     'ytd-segmented-like-dislike-button-renderer, ' +
     'segmented-like-dislike-button-view-model, ' +
     'like-button-view-model, ' +
     '#segmented-like-button'
-  ) : null;
-  if (likeBtn && likeBtn.parentElement) {
-    try {
-      likeBtn.parentElement.insertBefore(buttonEl, likeBtn);
-      return true;
-    } catch (_) {}
+  )) : [];
+
+  for (const likeBtn of candidateLikeButtons) {
+    if (likeBtn.closest?.('yt-player-quick-action-buttons')) continue;
+    if (likeBtn.parentElement) {
+      try {
+        likeBtn.parentElement.insertBefore(buttonEl, likeBtn);
+        return true;
+      } catch (_) {}
+    }
   }
 
-  // 2. Potential target containers on YouTube watch / shorts pages
+  // 3. Fallback target containers on YouTube watch / shorts pages
   const targetSelectors = [
-    '#top-level-buttons-computed',
-    'ytd-menu-renderer #top-level-buttons-computed',
-    'ytd-watch-metadata #actions #top-level-buttons-computed',
-    'ytd-watch-metadata #top-row #actions #top-level-buttons-computed',
     'yt-flexible-actions-view-model',
     'ytd-watch-metadata yt-flexible-actions-view-model',
     '#top-row #actions',
@@ -133,7 +168,7 @@ export function injectSummaryButton(buttonEl, doc = (typeof document !== 'undefi
 
   for (const selector of targetSelectors) {
     const container = doc.querySelector ? doc.querySelector(selector) : null;
-    if (container) {
+    if (container && !container.closest?.('yt-player-quick-action-buttons')) {
       if (typeof container.prepend === 'function') {
         container.prepend(buttonEl);
       } else {
